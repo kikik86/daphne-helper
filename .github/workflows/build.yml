@@ -1,4 +1,4 @@
-name: Build EXE
+name: Build EXE with Nuitka
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Python
@@ -17,17 +17,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Nuitka and dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
+          pip install nuitka
 
-      - name: Build EXE
+      - name: Compile with Nuitka
         run: |
-          pyinstaller --noconsole --onefile main.py
+          python -m nuitka main.py --standalone --onefile --windows-disable-console --output-filename=daphne_helper.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: main-exe
-          path: dist/main.exe
+          name: daphne-helper-exe
+          path: daphne_helper.exe
