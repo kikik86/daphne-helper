@@ -17,7 +17,7 @@ def is_chest_ui_present():
     image = np.array(screenshot)
     gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
-    # 手掌圖案匹配
+    # 手掌圖案匹配1
     result = cv2.matchTemplate(gray_image, reference_image, cv2.TM_CCOEFF_NORMED)
     _, max_val, _, _ = cv2.minMaxLoc(result)
 
