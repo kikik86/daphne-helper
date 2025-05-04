@@ -1,74 +1,76 @@
-
 import cv2
 import numpy as np
-import mss
 import pyautogui
-import keyboard
+import winsound
 import time
 
-# 螢幕解析度固定為 1920x1080
-SCREEN_WIDTH = 1920
-SCREEN_HEIGHT = 1080
+# 參考手掌圖案（請準備手掌截圖）
+reference_image = cv2.imread("hand_icon_template.png", cv2.IMREAD_GRAYSCALE)
 
-# 小遊戲節奏區域 (可手動調整)
-GAME_REGION = {"top": 480, "left": 710, "width": 500, "height": 120}
-CLICK_POSITION = (960, 640)  # 「解除」按鈕的大致位置
+def play_alert():
+    """ 播放鈴鐺聲 """
+    winsound.PlaySound("bell.wav", winsound.SND_FILENAME)
 
-# HSV 色域：橘色區塊
-LOWER_ORANGE = np.array([10, 150, 150])
-UPPER_ORANGE = np.array([30, 255, 255])
+def is_chest_ui_present():
+    """ 偵測開箱 UI """
+    screenshot = pyautogui.screenshot()
+    image = np.array(screenshot)
+    gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
-# 白色指針：亮度高、幾乎純白
-LOWER_WHITE = np.array([0, 0, 200])
-UPPER_WHITE = np.array([180, 30, 255])
+    # 手掌圖案匹配
+    result = cv2.matchTemplate(gray_image, reference_image, cv2.TM_CCOEFF_NORMED)
+    _, max_val, _, _ = cv2.minMaxLoc(result)
 
-def detect_zones(image):
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    
-    # 偵測橘色
-    mask_orange = cv2.inRange(hsv, LOWER_ORANGE, UPPER_ORANGE)
-    contours_o, _ = cv2.findContours(mask_orange, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    orange_boxes = [cv2.boundingRect(cnt) for cnt in contours_o if cv2.contourArea(cnt) > 100]
+    # 圓形偵測
+    circles = cv2.HoughCircles(gray_image, cv2.HOUGH_GRADIENT, 1, 20, param1=50, param2=30, minRadius=30, maxRadius=100)
 
-    # 偵測白色指針
-    mask_white = cv2.inRange(hsv, LOWER_WHITE, UPPER_WHITE)
-    contours_w, _ = cv2.findContours(mask_white, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    white_boxes = [cv2.boundingRect(cnt) for cnt in contours_w if cv2.contourArea(cnt) > 10]
+    return max_val > 0.8 and circles is not None
 
-    return orange_boxes, white_boxes
+def track_pointer():
+    """ 追蹤指針並判斷是否進入橘色區域 """
+    while is_chest_ui_present():
+        screenshot = pyautogui.screenshot()
+        image = np.array(screenshot)
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-def boxes_overlap(box1, box2):
-    x1, y1, w1, h1 = box1
-    x2, y2, w2, h2 = box2
-    return not (x1 + w1 < x2 or x2 + w2 < x1 or y1 + h1 < y2 or y2 + h2 < y1)
+        # 指針偵測
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        _, binary = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-def main():
-    print("🔧 Wizardry Daphne 小遊戲輔助已啟動（按 ESC 結束）")
-    time.sleep(1)
+        pointer_position = None
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if w < 20 and h > 30:  # 指針大小範圍
+                pointer_position = (x, y, w, h)
+                cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
-    with mss.mss() as sct:
-        while True:
-            if keyboard.is_pressed("esc"):
-                print("🛑 已手動結束")
-                break
+        # 橘色範圍偵測
+        lower_orange = np.array([5, 150, 150])
+        upper_orange = np.array([20, 255, 255])
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        mask_orange = cv2.inRange(hsv, lower_orange, upper_orange)
+        orange_contours, _ = cv2.findContours(mask_orange, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            frame = np.array(sct.grab(GAME_REGION))
-            image = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+        # 指針進入橘色區域時播放提示音
+        if pointer_position:
+            px, py, pw, ph = pointer_position
+            for oc in orange_contours:
+                ox, oy, ow, oh = cv2.boundingRect(oc)
+                if px >= ox and px + pw <= ox + ow:
+                    print("指針進入橘色範圍！")
+                    play_alert()
+                    time.sleep(0.5)  # 短暫延遲避免連續觸發
 
-            orange_boxes, white_boxes = detect_zones(image)
+        # 顯示畫面
+        cv2.imshow("Detected Pointer", image)
+        cv2.waitKey(10)
 
-            # 逐一比對是否有交集
-            for o_box in orange_boxes:
-                for w_box in white_boxes:
-                    if boxes_overlap(o_box, w_box):
-                        print("✅ 命中！執行點擊")
-                        pyautogui.click(*CLICK_POSITION)
-                        time.sleep(0.3)  # 防止重複點擊
-                        break
-
-            time.sleep(0.01)  # 降低 CPU 負載
-
-if __name__ == "__main__":
-    main()
-    # Trigger GitHub Actions build 4
-
+# 主執行迴圈
+while True:
+    if is_chest_ui_present():
+        print("偵測到開箱畫面，開始輔助程式...")
+        track_pointer()
+    else:
+        print("未偵測到開箱畫面，程式保持待機")
+        time.sleep(1)  # 每秒檢查一次
