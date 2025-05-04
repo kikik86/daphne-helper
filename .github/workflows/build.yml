@@ -17,13 +17,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Nuitka and dependencies
+      - name: Install Nuitka
         run: |
           pip install nuitka
 
       - name: Compile with Nuitka
         run: |
-          python -m nuitka main.py --standalone --onefile --windows-disable-console --output-filename=daphne_helper.exe
+          python -m nuitka main.py --standalone --onefile --windows-console-mode=disable --output-filename=daphne_helper.exe --assume-yes-for-downloads
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
